@@ -1,0 +1,101 @@
+#!/usr/bin/env perl
+
+use strict;
+use Data::Dumper;
+use Getopt::Std;
+use utf8;
+use Encode qw/encode decode/;
+use vars '$opt_c', '$opt_u','$opt_v', '$opt_h';
+
+################################################################################
+#
+# build unigram lexicon
+#
+################################################################################
+
+sub build_unigram_lexicon
+{
+	my $file = shift @_;
+	my %lexicon = ();
+	open FH, "<$file" or die "can not open $file";
+	print STDERR "Building Unigram Lexicon: \n" if ($opt_v);
+	while (<FH>) {
+		chomp;
+		$_ = decode('UTF-8', $_);
+		my (undef, $_) = split(/\s+/, $_, 2);
+		s/\[|\]\w+//g; # remove combined word	
+		foreach (split(/\s+/)) {
+			my ($lex, $attr) = split(/\//, $_, 2);
+			# omit punctuation, Arab number, time and alpha
+			next if $attr =~ /w|t/;
+			next if $lex =~ /[０１２３４５６７８９]/;
+			next if $lex =~ /[ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ]/;
+			$lexicon{$lex}++;
+			print STDERR "\r\t\t".keys(%lexicon)." items processed." if ($opt_v && keys(%lexicon) % 500 == 0);
+		}
+	}
+	print STDERR "\r\t\t".keys(%lexicon)." items processed.\n" if ($opt_v);
+	print encode("UTF-8", "$lexicon{$_} $_\n") foreach keys %lexicon;
+	close FH;
+}
+
+################################################################################
+#
+# build combined word
+#
+################################################################################
+
+sub build_combined_lexicon
+{
+	my $file = shift @_;
+	my %lexicon = ();
+	my $combine = 0;
+	open FH, "<$file" or die "can not open $file";
+	print STDERR "Building Combined Lexicon: \n" if ($opt_v);
+	while (<FH>) {
+		chomp;
+		$_ = decode('UTF-8', $_);
+		(undef, $_) = split(/\s+/, $_, 2);
+		my @stack = ();
+		foreach (split(/\s+/)) {
+			#combined word start 
+			$combine = 1 if ($_ =~ /^\[/);
+			my ($lex, $attr) = split(/\//, $_, 2);
+			$lex =~ s/\[//g; # remove mark
+			$attr =~ s/\]\w+//g;
+			push @stack, "$lex" if ($combine);
+			if ($_ =~ /\]\w+$/) {
+				my $lex = "@stack";
+				$lex =~ s/\s+//g;
+				$lexicon{"$lex"}++;
+				print STDERR "\r\t\t".keys(%lexicon)." items processed." if ($opt_v && keys(%lexicon) % 5 == 0);
+				@stack = ();
+				$combine = 0;
+			}
+		}
+	}
+	print STDERR "\r\t\t".keys(%lexicon)." items processed.\n" if ($opt_v);
+	print encode("UTF-8", "1 $_\n") foreach keys %lexicon;
+	close FH;
+}
+
+################################################################################
+#
+# main
+#
+################################################################################
+
+
+if (!getopts("cuv") || $opt_h || !$ARGV[0]) {
+	print "Usage: pdc_tool [OPTIONS] CORPUS\n";
+	print "Convert People Daily Corpus to Lexicon\n";
+	print "OPTIONS:\n";
+	print "        -u            build unigram lexicon from CORPUS\n";
+	print "        -c            build combined word lexicon from CORPUS\n";
+	print "        -v            verbose\n";
+	print "\n";
+	print "Author: jianingy <detrox\@gmail.com>\n";
+}
+
+&build_unigram_lexicon($ARGV[0]) if ($opt_u);
+&build_combined_lexicon($ARGV[0]) if ($opt_c);
